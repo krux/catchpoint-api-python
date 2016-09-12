@@ -21,12 +21,20 @@ class Application(object):
         self.catchpoint = Catchpoint(
             logger=logging.getLogger(name=self.name)
         )
-
-    def run(self):
-        pprint(self.catchpoint.favorite_data({
+        self.cred = {
             'client_id': 'RMe-Sk-jT2P1LRW1B',
             'client_secret': 'a1f57213-fdf0-4616-b2fb-4388f0a20ced',
-        }, 69259, -1, 'now', 'asgklrjbalkwbjrlkBEWR'))
+        }
+
+    def run(self):
+        charts = self.catchpoint.favorite_charts(self.cred)
+        chart_id = charts['items'][0]['id']
+        pprint(self.catchpoint.favorite_details(self.cred, chart_id))
+        pprint(self.catchpoint.favorite_data(self.cred, chart_id, -30, 'now'))
+
+        nodes = self.catchpoint.nodes(self.cred)
+        node_id = nodes['items'][0]['id']
+        pprint(self.catchpoint.node(self.cred, node_id))
 
 
 def main():
