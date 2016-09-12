@@ -1,5 +1,6 @@
 import sys
 import base64
+from logging import getLogger
 import datetime
 import pytz
 import requests
@@ -14,7 +15,8 @@ class Catchpoint(object):
     def __init__(
         self,
         host="io.catchpoint.com",
-        api_uri="ui/api/v1"
+        api_uri="ui/api/v1",
+        logger=None,
     ):
         """
         Basic init method.
@@ -22,11 +24,11 @@ class Catchpoint(object):
         - host (str): The host to connect to
         - api_uri (str): The API's connection string
         """
-        self.verbose = False
         self.host = host
         self.api_uri = api_uri
         self.content_type = "application/json"
 
+        self._logger = logger if logger is not None else getLogger(name=self.__class__.__name__)
         self._auth = False
         self._token = None
 
@@ -34,8 +36,7 @@ class Catchpoint(object):
         """
         Debug output. Set self.verbose to True to enable.
         """
-        if self.verbose:
-            sys.stderr.write(msg + '\n')
+        self._logger.debug(msg)
 
     def _connection_error(self, e):
         msg = "Unable to reach {0}: {1}" .format(self.host, e)
