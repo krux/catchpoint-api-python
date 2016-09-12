@@ -129,7 +129,10 @@ class Catchpoint(object):
                     endTime = datetime.datetime.now(pytz.timezone(tz))
                     endTime = endTime.replace(microsecond=0)
                 except pytz.UnknownTimeZoneError:
-                    msg = "Unknown Timezone '{0}'\nUse tz database format: http://en.wikipedia.org/wiki/List_of_tz_database_time_zones" .format(tz)
+                    msg = "\n".join([
+                        "Unknown Timezone '{0}'".format(tz),
+                        "Use tz database format: http://en.wikipedia.org/wiki/List_of_tz_database_time_zones",
+                    ])
                     sys.exit(msg)
                 startTime = endTime + datetime.timedelta(minutes=int(startTime))
                 startTime = startTime.strftime('%Y-%m-%dT%H:%M:%S')
