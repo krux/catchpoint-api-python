@@ -11,21 +11,24 @@ class CatchpointError(Exception):
 
 
 class Catchpoint(object):
+    _DEFAULT_HOST = "io.catchpoint.com"
+    _DFFAULT_VERSION = 1
+    _URL_TEMPLATE = "https://{host}/ui/api/v{version}/{uri}"
 
     def __init__(
         self,
-        host="io.catchpoint.com",
-        api_uri="ui/api/v1",
+        host=_DEFAULT_HOST,
+        version=_DFFAULT_VERSION,
         logger=None,
     ):
         """
         Basic init method.
 
         - host (str): The host to connect to
-        - api_uri (str): The API's connection string
+        - version (int): The version of the API
         """
-        self.host = host
-        self.api_uri = api_uri
+        self._host = host
+        self._version = version
         self.content_type = "application/json"
 
         self._logger = logger if logger is not None else getLogger(name=self.__class__.__name__)
@@ -39,7 +42,7 @@ class Catchpoint(object):
         self._logger.debug(msg)
 
     def _connection_error(self, e):
-        msg = "Unable to reach {0}: {1}" .format(self.host, e)
+        msg = "Unable to reach {0}: {1}".format(self._host, e)
         sys.exit(msg)
 
     def _authorize(self, creds):
@@ -49,7 +52,7 @@ class Catchpoint(object):
         - creds: dict with client_id and client_secret
         """
         self._debug("Creating auth url...")
-        uri = "https://{0}/ui/api/token" .format(self.host)
+        uri = "https://{0}/ui/api/token".format(self._host)
         payload = {
             'grant_type': 'client_credentials',
             'client_id': creds['client_id'],
@@ -60,7 +63,7 @@ class Catchpoint(object):
         self._debug("Making auth request...")
         try:
             r = requests.post(uri, data=payload)
-        except requests.ConnectionError, e:
+        except requests.ConnectionError as e:
             self._connection_error(e)
 
         self._debug("URL: " + r.url)
@@ -83,19 +86,22 @@ class Catchpoint(object):
             'Accept': self.content_type,
             'Authorization': "Bearer " + base64.b64encode(self._token)
         }
+
+        final_url = self._URL_TEMPLATE.format(host=self._host, version=self._version, uri=uri)
         try:
-            r = requests.get(uri, headers=headers, params=params, data=data)
-            if r.status_code != 200:
-                raise CatchpointError(r.content)
-        except requests.ConnectionError, e:
+            r = requests.get(final_url, headers=headers, params=params, data=data)
+        except requests.ConnectionError as e:
             self._connection_error(e)
 
-        self._debug("URL: " + r.url)
+        if r.status_code != 200:
+            raise CatchpointError(r.content)
+
         try:
             r_data = r.json()
             self._expired_token_check(r_data)
-        except TypeError, e:
+        except TypeError as e:
             return e
+
         return r_data
 
     def _expired_token_check(self, data):
@@ -154,14 +160,12 @@ class Catchpoint(object):
 
         # prepare request
         self._debug("Creating raw_chart url...")
-        uri = "https://{0}/{1}/performance/raw/{2}" \
-            .format(self.host, self.api_uri, testid)
         params = {
             'startTime': startTime,
             'endTime': endTime
         }
 
-        return self._make_request(uri, params)
+        return self._make_request("performance/raw/{0}".format(testid), params)
 
     def favorite_charts(self, creds):
         """
@@ -172,10 +176,8 @@ class Catchpoint(object):
 
         # prepare request
         self._debug("Creating get_favorites url...")
-        uri = "https://{0}/{1}/performance/favoriteCharts" \
-            .format(self.host, self.api_uri)
 
-        return self._make_request(uri)
+        return self._make_request("performance/favoriteCharts")
 
     def favorite_details(self, creds, favid):
         """
@@ -186,10 +188,8 @@ class Catchpoint(object):
 
         # prepare request
         self._debug("Creating favorite_details url...")
-        uri = "https://{0}/{1}/performance/favoriteCharts/{2}" \
-            .format(self.host, self.api_uri, favid)
 
-        return self._make_request(uri)
+        return self._make_request("performance/favoriteCharts/{0}".format(favid))
 
     def favorite_data(
             self, creds, favid,
@@ -205,8 +205,6 @@ class Catchpoint(object):
 
         # prepare request
         self._debug("Creating favorite_data url...")
-        uri = "https://{0}/{1}/performance/favoriteCharts/{2}/data" \
-            .format(self.host, self.api_uri, favid)
 
         if endTime is None or startTime is None:
             params = None
@@ -219,7 +217,7 @@ class Catchpoint(object):
         if tests is not None:
             params['tests'] = tests
 
-        return self._make_request(uri, params)
+        return self._make_request("performance/favoriteCharts/{0}/data".format(favid), params)
 
     def nodes(self, creds):
         """
@@ -230,10 +228,8 @@ class Catchpoint(object):
 
         # prepare request
         self._debug("Creating nodes url...")
-        uri = "https://{0}/{1}/nodes" \
-            .format(self.host, self.api_uri)
 
-        return self._make_request(uri)
+        return self._make_request("nodes")
 
     def node(self, creds, node):
         """
@@ -243,7 +239,5 @@ class Catchpoint(object):
             self._authorize(creds)
 
         self._debug("Creating node url...")
-        uri = "https://{0}/{1}/nodes/{2}" \
-            .format(self.host, self.api_uri, node)
 
-        return self._make_request(uri)
+        return self._make_request("nodes/{0}".format(node))
