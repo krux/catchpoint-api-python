@@ -88,19 +88,18 @@ class Catchpoint(object):
         }
 
         final_url = self._URL_TEMPLATE.format(host=self._host, version=self._version, uri=uri)
-        try:
-            r = requests.get(final_url, headers=headers, params=params, data=data)
-        except requests.ConnectionError as e:
-            self._connection_error(e)
+        res = requests.get(final_url, headers=headers, params=params, data=data)
 
-        if r.status_code != 200:
-            raise CatchpointError(r.content)
+        if res.status_code < 200 or res.status_code > 299:
+            msg = "{status_code} {reason} was returned. Body: {body}".format(
+                status_code=res.status_code,
+                reason=res.reason,
+                body=res.content,
+            )
+            raise CatchpointError(msg)
 
-        try:
-            r_data = r.json()
-            self._expired_token_check(r_data)
-        except TypeError as e:
-            return e
+        r_data = res.json()
+        self._expired_token_check(r_data)
 
         return r_data
 
