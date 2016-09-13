@@ -1,7 +1,7 @@
 import sys
 import base64
 from logging import getLogger
-from DateTime import DateTime
+from datetime import datetime, timedelta, MINYEAR
 import pytz
 import requests
 
@@ -40,7 +40,7 @@ class Catchpoint(object):
             'Accept': 'application/json',
         }
         # GOTCHA: Arbitrarily chosen date time in the past
-        self._token_expires_on = DateTime(0)
+        self._token_expires_on = datetime(MINYEAR, 1, 1, tzinfo=pytz.utc)
 
     def _debug(self, msg):
         """
@@ -54,7 +54,8 @@ class Catchpoint(object):
 
         - creds: dict with client_id and client_secret
         """
-        if self._token_expires_on.isPast():
+        now = datetime.now(tz=pytz.utc).replace(microsecond=0)
+        if self._token_expires_on < now:
             # Remove old authentication header
             if "Authorization" in self._headers:
                 self._headers.pop("Authorization")
@@ -80,9 +81,8 @@ class Catchpoint(object):
 
             # Remember the expiry datetime
             # GOTCHA: Take out 60 seconds from the expiry just to be safe
-            expire_time_epoch = DateTime().timeTime() + int(auth_token["expires_in"]) - 60
-            self._token_expires_on = DateTime(expire_time_epoch)
-            self._debug("Expires at: " + self._token_expires_on.ISO8601())
+            self._token_expires_on = now + timedelta(seconds=(int(auth_token["expires_in"]) - 60))
+            self._debug("Expires at: " + self._token_expires_on.isoformat())
 
         return self._headers
 
@@ -131,7 +131,7 @@ class Catchpoint(object):
                     msg = "When using relative times, startTime must be a negative number (number of minutes minus 'now')."
                     sys.exit(msg)
                 try:
-                    endTime = DateTime.now(pytz.timezone(tz))
+                    endTime = datetime.now(pytz.timezone(tz))
                     endTime = endTime.replace(microsecond=0)
                 except pytz.UnknownTimeZoneError:
                     msg = "\n".join([
@@ -139,7 +139,7 @@ class Catchpoint(object):
                         "Use tz database format: http://en.wikipedia.org/wiki/List_of_tz_database_time_zones",
                     ])
                     sys.exit(msg)
-                startTime = endTime + DateTime.timedelta(minutes=int(startTime))
+                startTime = endTime + timedelta(minutes=int(startTime))
                 startTime = startTime.strftime('%Y-%m-%dT%H:%M:%S')
                 endTime = endTime.strftime('%Y-%m-%dT%H:%M:%S')
                 self._debug("endTime: " + str(endTime))

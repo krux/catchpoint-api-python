@@ -30,7 +30,7 @@ class Application(object):
         chart_id = charts['items'][0]['id']
         pprint(self.catchpoint.favorite_details(chart_id))
         pprint(self.catchpoint.favorite_data(chart_id))
-        #pprint(self.catchpoint.favorite_data(chart_id, -30, 'now'))
+        pprint(self.catchpoint.favorite_data(chart_id, -30, 'now'))
 
         nodes = self.catchpoint.nodes()
         node_id = nodes['items'][0]['id']
