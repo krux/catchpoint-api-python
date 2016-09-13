@@ -20,8 +20,8 @@ class Application(object):
 
         logging.basicConfig(format=self.LOG_FORMAT, level=logging.DEBUG)
         self.catchpoint = Catchpoint(
-            client_id='RMe-Sk-jT2P1LRW1B',
-            client_secret='a1f57213-fdf0-4616-b2fb-4388f0a20ced',
+            client_id='',
+            client_secret='',
             logger=logging.getLogger(name=self.name)
         )
 
