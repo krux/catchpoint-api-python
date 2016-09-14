@@ -39,7 +39,8 @@ class Catchpoint(object):
         self._headers = {
             'Accept': 'application/json',
         }
-        # GOTCHA: Arbitrarily chosen date time in the past
+        # Arbitrarily chosen date time in the past. Chosen so that a token will
+        # be requested before the first call.
         self._token_expires_on = datetime(MINYEAR, 1, 1, tzinfo=pytz.utc)
 
     def _debug(self, msg):
