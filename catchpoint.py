@@ -59,7 +59,7 @@ class Catchpoint(object):
         if self._token_expires_on < now:
             # Remove old authentication header
             if "Authorization" in self._headers:
-                self._headers.pop("Authorization")
+                del self._headers["Authorization"]
 
             # Retrieve the new authentication token
             self._debug("Creating auth url...")
