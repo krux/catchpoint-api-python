@@ -28,6 +28,8 @@ class Catchpoint(object):
         """
         Basic init method.
 
+        - client_id (str): The Key given to your Pull API Consumer
+        - client_secret (str): The Secret given to your Pull API Consumer
         - host (str): The host to connect to
         - version (int): The version of the API
         """
@@ -46,15 +48,14 @@ class Catchpoint(object):
 
     def _debug(self, msg):
         """
-        Debug output. Set self.verbose to True to enable.
+        Logs out in debug level
         """
+        # TODO: Remove me
         self._logger.debug(msg)
 
     def _get_headers(self):
         """
-        Request an auth token.
-
-        - creds: dict with client_id and client_secret
+        Requests an auth token with the given key and secret from __init__()
         """
         now = datetime.now(tz=pytz.utc).replace(microsecond=0)
         if self._token_expires_on < now:
@@ -92,11 +93,12 @@ class Catchpoint(object):
 
     def _call(self, url, *args, **kwargs):
         """
-        Make a request with an auth token.
+        Calls the given URL. Requests a new access token if needed.
 
-        - uri: URI for the new Request object.
-        - params: (optional) dict or bytes to be sent in the query string for the Request.
-        - data: (optional) dict, bytes, or file-like object to send in the body of the Request.
+        - url (str): Relative path URL (i.e. performance/favoriteCharts) unique to the endpoint.
+                     The full URL is deduced based on _URL_TEMPLATE.
+        - args (list): Ordered arguments passed directly to requests.request() via _make_request()
+        - kwargs (dict): Keyword arguments passed directly to requests.request() via _make_request()
         """
         self._debug("Making request...")
 
@@ -109,6 +111,13 @@ class Catchpoint(object):
         )
 
     def _make_request(self, *args, **kwargs):
+        """
+        A simple wrapper around requests.request(). If response is 2**, returns JSON parsed response as a dictionary.
+        Otherwise, raises a CatchpointError.
+
+        - args (list): Ordered arguments passed directly to requests.request()
+        - kwargs (dict): Keyword arguments passed directly to requests.request()
+        """
         res = requests.request(*args, **kwargs)
 
         if res.status_code < 200 or res.status_code > 299:
