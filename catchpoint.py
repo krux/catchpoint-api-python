@@ -15,6 +15,7 @@ class Catchpoint(object):
     _DFFAULT_VERSION = 1
     _URL_TEMPLATE = "https://{host}/ui/api/v{version}/{uri}"
     _TOKEN_URL_TEMPLATE = "https://{host}/ui/api/token"
+    _TOKEN_EXPIRATION_SAFETY_BUFFER = 60  # seconds
 
     def __init__(
         self,
@@ -49,7 +50,7 @@ class Catchpoint(object):
         """
         self._logger.debug(msg)
 
-    def _get_header(self):
+    def _get_headers(self):
         """
         Request an auth token.
 
@@ -81,8 +82,10 @@ class Catchpoint(object):
             self._headers["Authorization"] = "Bearer " + base64.b64encode(access_token)
 
             # Remember the expiry datetime
-            # GOTCHA: Take out 60 seconds from the expiry just to be safe
-            self._token_expires_on = now + timedelta(seconds=(int(auth_token["expires_in"]) - 60))
+            # GOTCHA: Take out 60 seconds from the expiry just to be safe. I don't want this to fail because
+            #         either it took me more than a second to get this request or took them more than a second to
+            #         get the last request.
+            self._token_expires_on = now + timedelta(seconds=(int(auth_token["expires_in"]) - self._TOKEN_EXPIRATION_SAFETY_BUFFER))
             self._debug("Expires at: " + self._token_expires_on.isoformat())
 
         return self._headers
@@ -100,7 +103,7 @@ class Catchpoint(object):
         final_url = self._URL_TEMPLATE.format(host=self._host, version=self._version, uri=url)
         return self._make_request(
             url=final_url,
-            headers=self._get_header(),
+            headers=self._get_headers(),
             *args,
             **kwargs
         )
