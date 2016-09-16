@@ -1,7 +1,7 @@
 import sys
 import base64
 from logging import getLogger
-import datetime
+from datetime import datetime, timedelta, MINYEAR
 import pytz
 import requests
 
@@ -14,9 +14,13 @@ class Catchpoint(object):
     _DEFAULT_HOST = "io.catchpoint.com"
     _DFFAULT_VERSION = 1
     _URL_TEMPLATE = "https://{host}/ui/api/v{version}/{uri}"
+    _TOKEN_URL_TEMPLATE = "https://{host}/ui/api/token"
+    _TOKEN_EXPIRATION_SAFETY_BUFFER = 60  # seconds
 
     def __init__(
         self,
+        client_id,
+        client_secret,
         host=_DEFAULT_HOST,
         version=_DFFAULT_VERSION,
         logger=None,
@@ -24,71 +28,97 @@ class Catchpoint(object):
         """
         Basic init method.
 
+        - client_id (str): The Key given to your Pull API Consumer
+        - client_secret (str): The Secret given to your Pull API Consumer
         - host (str): The host to connect to
         - version (int): The version of the API
         """
+        self._client_id = client_id
+        self._client_secret = client_secret
         self._host = host
         self._version = version
-        self.content_type = "application/json"
 
         self._logger = logger if logger is not None else getLogger(name=self.__class__.__name__)
-        self._auth = False
-        self._token = None
+        self._headers = {
+            'Accept': 'application/json',
+        }
+        # Arbitrarily chosen date time in the past. Chosen so that a token will
+        # be requested before the first call.
+        self._token_expires_on = datetime(MINYEAR, 1, 1, tzinfo=pytz.utc)
 
     def _debug(self, msg):
         """
-        Debug output. Set self.verbose to True to enable.
+        Logs out in debug level
         """
+        # TODO: Remove me
         self._logger.debug(msg)
 
-    def _connection_error(self, e):
-        msg = "Unable to reach {0}: {1}".format(self._host, e)
-        sys.exit(msg)
-
-    def _authorize(self, creds):
+    def _get_headers(self):
         """
-        Request an auth token.
-
-        - creds: dict with client_id and client_secret
+        Requests an auth token with the given key and secret from __init__()
         """
-        self._debug("Creating auth url...")
-        uri = "https://{0}/ui/api/token".format(self._host)
-        payload = {
-            'grant_type': 'client_credentials',
-            'client_id': creds['client_id'],
-            'client_secret': creds['client_secret']
-        }
+        now = datetime.now(tz=pytz.utc).replace(microsecond=0)
+        if self._token_expires_on < now:
+            # Remove old authentication header
+            if "Authorization" in self._headers:
+                del self._headers["Authorization"]
 
-        # make request
-        self._debug("Making auth request...")
-        try:
-            r = requests.post(uri, data=payload)
-        except requests.ConnectionError as e:
-            self._connection_error(e)
+            # Retrieve the new authentication token
+            self._debug("Creating auth url...")
+            uri = self._TOKEN_URL_TEMPLATE.format(host=self._host)
+            auth_token = self._make_request(
+                method="POST",
+                url=uri,
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": self._client_id,
+                    "client_secret": self._client_secret,
+                },
+                headers=self._headers,
+            )
 
-        self._debug("URL: " + r.url)
-        data = r.json()
+            # Set the new token in header
+            access_token = auth_token["access_token"]
+            self._debug("Access token: " + access_token)
+            self._headers["Authorization"] = "Bearer " + base64.b64encode(access_token)
 
-        self._token = data['access_token']
-        self._debug("TOKEN: " + self._token)
-        self._auth = True
+            # Remember the expiry datetime
+            # GOTCHA: Take out 60 seconds from the expiry just to be safe. I don't want this to fail because
+            #         either it took me more than a second to get this request or took them more than a second to
+            #         get the last request.
+            self._token_expires_on = now + timedelta(seconds=(int(auth_token["expires_in"]) - self._TOKEN_EXPIRATION_SAFETY_BUFFER))
+            self._debug("Expires at: " + self._token_expires_on.isoformat())
 
-    def _make_request(self, uri, params=None, data=None):
+        return self._headers
+
+    def _call(self, url, *args, **kwargs):
         """
-        Make a request with an auth token.
+        Calls the given URL. Requests a new access token if needed.
 
-        - uri: URI for the new Request object.
-        - params: (optional) dict or bytes to be sent in the query string for the Request.
-        - data: (optional) dict, bytes, or file-like object to send in the body of the Request.
+        - url (str): Relative path URL (i.e. performance/favoriteCharts) unique to the endpoint.
+                     The full URL is deduced based on _URL_TEMPLATE.
+        - args (list): Ordered arguments passed directly to requests.request() via _make_request()
+        - kwargs (dict): Keyword arguments passed directly to requests.request() via _make_request()
         """
         self._debug("Making request...")
-        headers = {
-            'Accept': self.content_type,
-            'Authorization': "Bearer " + base64.b64encode(self._token)
-        }
 
-        final_url = self._URL_TEMPLATE.format(host=self._host, version=self._version, uri=uri)
-        res = requests.get(final_url, headers=headers, params=params, data=data)
+        final_url = self._URL_TEMPLATE.format(host=self._host, version=self._version, uri=url)
+        return self._make_request(
+            url=final_url,
+            headers=self._get_headers(),
+            *args,
+            **kwargs
+        )
+
+    def _make_request(self, *args, **kwargs):
+        """
+        A simple wrapper around requests.request(). If response is 2**, returns JSON parsed response as a dictionary.
+        Otherwise, raises a CatchpointError.
+
+        - args (list): Ordered arguments passed directly to requests.request()
+        - kwargs (dict): Keyword arguments passed directly to requests.request()
+        """
+        res = requests.request(*args, **kwargs)
 
         if res.status_code < 200 or res.status_code > 299:
             msg = "{status_code} {reason} was returned. Body: {body}".format(
@@ -98,25 +128,7 @@ class Catchpoint(object):
             )
             raise CatchpointError(msg)
 
-        r_data = res.json()
-        self._expired_token_check(r_data)
-
-        return r_data
-
-    def _expired_token_check(self, data):
-        """
-        Determine whether the token is expired. While this check could
-        technically be performed before each request, it's easier to offload
-        retry logic onto the script using this class to avoid too many
-        req/min.
-
-        - data: The json data returned from the API call.
-        """
-        if "Message" in data:
-            if data['Message'].find("Expired token") != -1:
-                self._debug("Token was expired and has been cleared, try again...")
-                self._token = None
-                self._auth = False
+        return res.json()
 
     def _format_time(self, startTime, endTime, tz):
         """
@@ -132,7 +144,7 @@ class Catchpoint(object):
                     msg = "When using relative times, startTime must be a negative number (number of minutes minus 'now')."
                     sys.exit(msg)
                 try:
-                    endTime = datetime.datetime.now(pytz.timezone(tz))
+                    endTime = datetime.now(pytz.timezone(tz))
                     endTime = endTime.replace(microsecond=0)
                 except pytz.UnknownTimeZoneError:
                     msg = "\n".join([
@@ -140,7 +152,7 @@ class Catchpoint(object):
                         "Use tz database format: http://en.wikipedia.org/wiki/List_of_tz_database_time_zones",
                     ])
                     sys.exit(msg)
-                startTime = endTime + datetime.timedelta(minutes=int(startTime))
+                startTime = endTime + timedelta(minutes=int(startTime))
                 startTime = startTime.strftime('%Y-%m-%dT%H:%M:%S')
                 endTime = endTime.strftime('%Y-%m-%dT%H:%M:%S')
                 self._debug("endTime: " + str(endTime))
@@ -148,13 +160,10 @@ class Catchpoint(object):
 
         return startTime, endTime
 
-    def raw(self, creds, testid, startTime, endTime, tz="UTC"):
+    def raw(self, testid, startTime, endTime, tz="UTC"):
         """
         Retrieve the raw performance chart data for a given test for a time period.
         """
-        if not self._auth:
-            self._authorize(creds)
-
         startTime, endTime = self._format_time(startTime, endTime, tz)
 
         # prepare request
@@ -164,42 +173,41 @@ class Catchpoint(object):
             'endTime': endTime
         }
 
-        return self._make_request("performance/raw/{0}".format(testid), params)
+        return self._call(
+            method="GET",
+            url="performance/raw/{0}".format(testid),
+            params=params,
+        )
 
-    def favorite_charts(self, creds):
+    def favorite_charts(self):
         """
         Retrieve the list of favorite charts.
         """
-        if not self._auth:
-            self._authorize(creds)
-
         # prepare request
         self._debug("Creating get_favorites url...")
 
-        return self._make_request("performance/favoriteCharts")
+        return self._call(
+            method="GET",
+            url="performance/favoriteCharts",
+        )
 
-    def favorite_details(self, creds, favid):
+    def favorite_details(self, favid):
         """
         Retrieve the favorite chart details.
         """
-        if not self._auth:
-            self._authorize(creds)
-
         # prepare request
         self._debug("Creating favorite_details url...")
 
-        return self._make_request("performance/favoriteCharts/{0}".format(favid))
+        return self._call(
+            method="GET",
+            url="performance/favoriteCharts/{0}".format(favid),
+        )
 
-    def favorite_data(
-            self, creds, favid,
-            startTime=None, endTime=None, tz="UTC", tests=None):
+    def favorite_data(self, favid, startTime=None, endTime=None, tz="UTC", tests=None):
         """
         Retrieve the data for a favorite chart, optionally overriding its timeframe
         or test set.
         """
-        if not self._auth:
-            self._authorize(creds)
-
         startTime, endTime = self._format_time(startTime, endTime, tz)
 
         # prepare request
@@ -216,27 +224,31 @@ class Catchpoint(object):
         if tests is not None:
             params['tests'] = tests
 
-        return self._make_request("performance/favoriteCharts/{0}/data".format(favid), params)
+        return self._call(
+            method="GET",
+            url="performance/favoriteCharts/{0}/data".format(favid),
+            params=params,
+        )
 
-    def nodes(self, creds):
+    def nodes(self):
         """
         Retrieve the list of nodes for the API consumer.
         """
-        if not self._auth:
-            self._authorize(creds)
-
         # prepare request
         self._debug("Creating nodes url...")
 
-        return self._make_request("nodes")
+        return self._call(
+            method="GET",
+            url="nodes",
+        )
 
-    def node(self, creds, node):
+    def node(self, node):
         """
         Retrieve a given node for the API consumer.
         """
-        if not self._auth:
-            self._authorize(creds)
-
         self._debug("Creating node url...")
 
-        return self._make_request("nodes/{0}".format(node))
+        return self._call(
+            method="GET",
+            url="nodes/{0}".format(node),
+        )

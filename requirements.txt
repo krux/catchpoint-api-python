@@ -1,6 +1,5 @@
-# For DateTime manipulation
+# For Timezones
 # Version is latest at time of writing
-DateTime==4.1.1
 pytz==2016.6.1
 
 # For HTTP requests to Catchpoint Pull API
@@ -12,6 +11,3 @@ requests==2.11.1
 # This is needed so there are no version conflicts when
 # one downstream library does NOT specify the version it wants,
 # and another one does.
-
-# From DateTime
-zope.interface==4.3.2

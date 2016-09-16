@@ -27,7 +27,6 @@ setup(
         'Programming Language :: Python :: 2.7',
     ],
     install_requires=[
-        "datetime>=4.1",
         "pytz",
         "requests",
     ],
