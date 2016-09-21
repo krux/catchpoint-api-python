@@ -51,13 +51,6 @@ class Catchpoint(object):
         # be requested before the first call.
         self._token_expires_on = datetime(MINYEAR, 1, 1, tzinfo=pytz.utc)
 
-    def _debug(self, msg):
-        """
-        Logs out in debug level
-        """
-        # TODO: Remove me
-        self._logger.debug(msg)
-
     def _get_headers(self):
         """
         Gets the required headers for the API request. If access token has expired, automatically requests
@@ -73,7 +66,7 @@ class Catchpoint(object):
                 del self._headers["Authorization"]
 
             # Retrieve the new authentication token
-            self._debug("Creating auth url...")
+            self._logger.debug("Creating auth url...")
             uri = self._TOKEN_URL_TEMPLATE.format(host=self._host)
             auth_token = self._make_request(
                 method="POST",
@@ -88,7 +81,7 @@ class Catchpoint(object):
 
             # Set the new token in header
             access_token = auth_token["access_token"]
-            self._debug("Access token: " + access_token)
+            self._logger.debug("Access token: " + access_token)
             self._headers["Authorization"] = "Bearer " + base64.b64encode(access_token)
 
             # Remember the expiry datetime
@@ -96,7 +89,7 @@ class Catchpoint(object):
             #         either it took me more than a second to get this request or took them more than a second to
             #         get the last request.
             self._token_expires_on = now + timedelta(seconds=(int(auth_token["expires_in"]) - self._TOKEN_EXPIRATION_SAFETY_BUFFER))
-            self._debug("Expires at: " + self._token_expires_on.isoformat())
+            self._logger.debug("Expires at: " + self._token_expires_on.isoformat())
 
         return self._headers
 
@@ -114,7 +107,7 @@ class Catchpoint(object):
         :return: Result of the request, parsed as JSON.
         :rtype: dict
         """
-        self._debug("Making request...")
+        self._logger.debug("Making request...")
 
         final_url = self._URL_TEMPLATE.format(host=self._host, version=self._version, uri=url)
         return self._make_request(
@@ -174,8 +167,8 @@ class Catchpoint(object):
                 startTime = endTime + timedelta(minutes=int(startTime))
                 startTime = startTime.strftime('%Y-%m-%dT%H:%M:%S')
                 endTime = endTime.strftime('%Y-%m-%dT%H:%M:%S')
-                self._debug("endTime: " + str(endTime))
-                self._debug("startTime: " + str(startTime))
+                self._logger.debug("endTime: " + str(endTime))
+                self._logger.debug("startTime: " + str(startTime))
 
         return startTime, endTime
 
@@ -198,7 +191,7 @@ class Catchpoint(object):
         startTime, endTime = self._format_time(startTime, endTime, tz)
 
         # prepare request
-        self._debug("Creating raw_chart url...")
+        self._logger.debug("Creating raw_chart url...")
         params = {
             'startTime': startTime,
             'endTime': endTime
@@ -217,7 +210,7 @@ class Catchpoint(object):
         .. seealso:: https://io.catchpoint.com/ui/Help/Detail/GET-api-vversion-performance-favoriteCharts
         """
         # prepare request
-        self._debug("Creating get_favorites url...")
+        self._logger.debug("Creating get_favorites url...")
 
         return self._call(
             method="GET",
@@ -234,7 +227,7 @@ class Catchpoint(object):
         :type favid: str
         """
         # prepare request
-        self._debug("Creating favorite_details url...")
+        self._logger.debug("Creating favorite_details url...")
 
         return self._call(
             method="GET",
@@ -263,7 +256,7 @@ class Catchpoint(object):
         startTime, endTime = self._format_time(startTime, endTime, tz)
 
         # prepare request
-        self._debug("Creating favorite_data url...")
+        self._logger.debug("Creating favorite_data url...")
 
         if endTime is None or startTime is None:
             params = None
@@ -289,7 +282,7 @@ class Catchpoint(object):
         .. seealso:: https://io.catchpoint.com/ui/Help/Detail/GET-api-vversion-nodes
         """
         # prepare request
-        self._debug("Creating nodes url...")
+        self._logger.debug("Creating nodes url...")
 
         return self._call(
             method="GET",
@@ -305,7 +298,7 @@ class Catchpoint(object):
         :param node: ID of the node to retrieve
         :type node: str
         """
-        self._debug("Creating node url...")
+        self._logger.debug("Creating node url...")
 
         return self._call(
             method="GET",
