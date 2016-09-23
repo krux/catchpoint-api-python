@@ -11,8 +11,9 @@ class CatchpointError(Exception):
 
 
 class Catchpoint(object):
-    _DEFAULT_HOST = "io.catchpoint.com"
-    _DFFAULT_VERSION = 1
+    DEFAULT_HOST = "io.catchpoint.com"
+    DFFAULT_VERSION = 1
+
     _URL_TEMPLATE = "https://{host}/ui/api/v{version}/{uri}"
     _TOKEN_URL_TEMPLATE = "https://{host}/ui/api/token"
     _TOKEN_EXPIRATION_SAFETY_BUFFER = 60  # seconds
@@ -21,17 +22,21 @@ class Catchpoint(object):
         self,
         client_id,
         client_secret,
-        host=_DEFAULT_HOST,
-        version=_DFFAULT_VERSION,
+        host=DEFAULT_HOST,
+        version=DFFAULT_VERSION,
         logger=None,
     ):
         """
         Basic init method.
 
-        - client_id (str): The Key given to your Pull API Consumer
-        - client_secret (str): The Secret given to your Pull API Consumer
-        - host (str): The host to connect to
-        - version (int): The version of the API
+        :param client_id: The Key given to your Pull API Consumer
+        :type client_id: str
+        :param client_secret: The Secret given to your Pull API Consumer
+        :type client_secret: str
+        :param host: The host to connect to
+        :type host: str
+        :param version: The version of the API
+        :type version: int
         """
         self._client_id = client_id
         self._client_secret = client_secret
@@ -46,16 +51,13 @@ class Catchpoint(object):
         # be requested before the first call.
         self._token_expires_on = datetime(MINYEAR, 1, 1, tzinfo=pytz.utc)
 
-    def _debug(self, msg):
-        """
-        Logs out in debug level
-        """
-        # TODO: Remove me
-        self._logger.debug(msg)
-
     def _get_headers(self):
         """
-        Requests an auth token with the given key and secret from __init__()
+        Gets the required headers for the API request. If access token has expired, automatically requests
+        a new one and adds that to the header.
+
+        :return: The headers for the API request
+        :rtype: dict
         """
         now = datetime.now(tz=pytz.utc).replace(microsecond=0)
         if self._token_expires_on < now:
@@ -64,7 +66,7 @@ class Catchpoint(object):
                 del self._headers["Authorization"]
 
             # Retrieve the new authentication token
-            self._debug("Creating auth url...")
+            self._logger.debug("Creating auth url...")
             uri = self._TOKEN_URL_TEMPLATE.format(host=self._host)
             auth_token = self._make_request(
                 method="POST",
@@ -79,7 +81,7 @@ class Catchpoint(object):
 
             # Set the new token in header
             access_token = auth_token["access_token"]
-            self._debug("Access token: " + access_token)
+            self._logger.debug("Access token: " + access_token)
             self._headers["Authorization"] = "Bearer " + base64.b64encode(access_token)
 
             # Remember the expiry datetime
@@ -87,7 +89,7 @@ class Catchpoint(object):
             #         either it took me more than a second to get this request or took them more than a second to
             #         get the last request.
             self._token_expires_on = now + timedelta(seconds=(int(auth_token["expires_in"]) - self._TOKEN_EXPIRATION_SAFETY_BUFFER))
-            self._debug("Expires at: " + self._token_expires_on.isoformat())
+            self._logger.debug("Expires at: " + self._token_expires_on.isoformat())
 
         return self._headers
 
@@ -95,12 +97,17 @@ class Catchpoint(object):
         """
         Calls the given URL. Requests a new access token if needed.
 
-        - url (str): Relative path URL (i.e. performance/favoriteCharts) unique to the endpoint.
-                     The full URL is deduced based on _URL_TEMPLATE.
-        - args (list): Ordered arguments passed directly to requests.request() via _make_request()
-        - kwargs (dict): Keyword arguments passed directly to requests.request() via _make_request()
+        :param url: Relative path URL (i.e. performance/favoriteCharts) unique to the endpoint.
+                    The full URL is deduced based on _URL_TEMPLATE.
+        :type url: str
+        :param args: Ordered arguments passed directly to requests.request() via _make_request()
+        :type args: list
+        :param kwargs: Keyword arguments passed directly to requests.request() via _make_request()
+        :type kwargs: dict
+        :return: Result of the request, parsed as JSON.
+        :rtype: dict
         """
-        self._debug("Making request...")
+        self._logger.debug("Making request...")
 
         final_url = self._URL_TEMPLATE.format(host=self._host, version=self._version, uri=url)
         return self._make_request(
@@ -115,8 +122,13 @@ class Catchpoint(object):
         A simple wrapper around requests.request(). If response is 2**, returns JSON parsed response as a dictionary.
         Otherwise, raises a CatchpointError.
 
-        - args (list): Ordered arguments passed directly to requests.request()
-        - kwargs (dict): Keyword arguments passed directly to requests.request()
+        :param args: Ordered arguments passed directly to requests.request()
+        :type args: list
+        :param kwargs: Keyword arguments passed directly to requests.request()
+        :type kwargs: dict
+        :raise: :py:class:`CatchpointError` if response is not 2**.
+        :return: Result of the request, parsed as JSON.
+        :rtype: dict
         """
         res = requests.request(*args, **kwargs)
 
@@ -155,19 +167,31 @@ class Catchpoint(object):
                 startTime = endTime + timedelta(minutes=int(startTime))
                 startTime = startTime.strftime('%Y-%m-%dT%H:%M:%S')
                 endTime = endTime.strftime('%Y-%m-%dT%H:%M:%S')
-                self._debug("endTime: " + str(endTime))
-                self._debug("startTime: " + str(startTime))
+                self._logger.debug("endTime: " + str(endTime))
+                self._logger.debug("startTime: " + str(startTime))
 
         return startTime, endTime
 
     def raw(self, testid, startTime, endTime, tz="UTC"):
         """
         Retrieve the raw performance chart data for a given test for a time period.
+
+        .. seealso:: https://io.catchpoint.com/ui/Help/Detail/GET-api-vversion-performance-raw-testId_showOnlyPushApiFailed_startTime_endTime
+
+        :param testid: ID of the test to get performance data from
+        :type testid: str
+        :param startTime: Start time to gather the data from. Either in '%m-%d-%Y %H:%M' format or a negative integer
+                          if endTime is 'now'
+        :type startTime: str | int
+        :param endTime: End time to gather the data to. Either in '%m-%d-%Y %H:%M' format or 'now'
+        :type endTime: str
+        :param tz: pytz recognized timezone name
+        :type tz: str
         """
         startTime, endTime = self._format_time(startTime, endTime, tz)
 
         # prepare request
-        self._debug("Creating raw_chart url...")
+        self._logger.debug("Creating raw_chart url...")
         params = {
             'startTime': startTime,
             'endTime': endTime
@@ -182,9 +206,11 @@ class Catchpoint(object):
     def favorite_charts(self):
         """
         Retrieve the list of favorite charts.
+
+        .. seealso:: https://io.catchpoint.com/ui/Help/Detail/GET-api-vversion-performance-favoriteCharts
         """
         # prepare request
-        self._debug("Creating get_favorites url...")
+        self._logger.debug("Creating get_favorites url...")
 
         return self._call(
             method="GET",
@@ -194,9 +220,14 @@ class Catchpoint(object):
     def favorite_details(self, favid):
         """
         Retrieve the favorite chart details.
+
+        .. seealso:: https://io.catchpoint.com/ui/Help/Detail/GET-api-vversion-performance-favoriteCharts-id
+
+        :param favid: ID of the favorite chart
+        :type favid: str
         """
         # prepare request
-        self._debug("Creating favorite_details url...")
+        self._logger.debug("Creating favorite_details url...")
 
         return self._call(
             method="GET",
@@ -207,11 +238,25 @@ class Catchpoint(object):
         """
         Retrieve the data for a favorite chart, optionally overriding its timeframe
         or test set.
+
+        .. seealso:: https://io.catchpoint.com/ui/Help/Detail/GET-api-vversion-performance-favoriteCharts-id-data
+
+        :param favid: ID of the favorite chart
+        :type favid: str
+        :param startTime: Start time to gather the data from. Either in '%m-%d-%Y %H:%M' format or a negative integer
+                          if endTime is 'now'
+        :type startTime: str | int
+        :param endTime: End time to gather the data to. Either in '%m-%d-%Y %H:%M' format or 'now'
+        :type endTime: str
+        :param tz: pytz recognized timezone name
+        :type tz: str
+        :param tests: Comma delimited list of test IDs
+        :type tests: str
         """
         startTime, endTime = self._format_time(startTime, endTime, tz)
 
         # prepare request
-        self._debug("Creating favorite_data url...")
+        self._logger.debug("Creating favorite_data url...")
 
         if endTime is None or startTime is None:
             params = None
@@ -233,9 +278,11 @@ class Catchpoint(object):
     def nodes(self):
         """
         Retrieve the list of nodes for the API consumer.
+
+        .. seealso:: https://io.catchpoint.com/ui/Help/Detail/GET-api-vversion-nodes
         """
         # prepare request
-        self._debug("Creating nodes url...")
+        self._logger.debug("Creating nodes url...")
 
         return self._call(
             method="GET",
@@ -245,8 +292,13 @@ class Catchpoint(object):
     def node(self, node):
         """
         Retrieve a given node for the API consumer.
+
+        .. seealso:: https://io.catchpoint.com/ui/Help/Detail/GET-api-vversion-nodes-id
+
+        :param node: ID of the node to retrieve
+        :type node: str
         """
-        self._debug("Creating node url...")
+        self._logger.debug("Creating node url...")
 
         return self._call(
             method="GET",
